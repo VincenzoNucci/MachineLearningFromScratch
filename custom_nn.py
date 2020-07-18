@@ -7,9 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 
 from activation_functions import *
-from backpropagation_functions import *
 from cost_functions import *
-from gradient_check import gradient_check_n
 
 np.random.seed(1)
 
@@ -61,8 +59,26 @@ class Dense(Layer):
         else: #activation == 'relu':
             self.activation = Activation_ReLU()
         self.cost = Cost_MSE()
-    def forward(self, inputs):
+    def forward(self, inputs, debug=False, epsilon=None):
         self.net_input = inputs
+        if debug:
+            augmented_parameters = np.zeros(epsilon.shape)
+            weights_column_vector = np.reshape(self.weights,(-1,1))
+            biases_column_vector = np.reshape(self.biases,(-1,1))
+            concatenated_parameters = np.concatenate((weights_column_vector, biases_column_vector))
+            for i in range(concatenated_parameters.shape[0]):
+                augmented_parameters[i] = concatenated_parameters[i]
+            # make the augmented parameter long as theta in order to sum them
+            # this because epsilon is a standard basis vector
+            augmented_parameters += epsilon
+            # rebuild the weights matrix and biases vector to apply forward propagation
+            weights_end = self.weights.shape[0] * self.weights.shape[1]
+            biases_end = self.biases.shape[0] * self.biases.shape[1] + weights_end
+            weights = np.reshape(augmented_parameters[0:weights_end],self.weights.shape)
+            biases = np.reshape(augmented_parameters[weights_end:biases_end], self.biases.shape)
+            output = np.dot(inputs, weights) + biases
+            activated_output = self.activation.forward(output)
+            return activated_output
         self.output = np.dot(inputs, self.weights) + self.biases
         self.activated_output = self.activation.forward(self.output)
         return self.activated_output
@@ -121,10 +137,10 @@ class NeuralNet():
         for layer in self.layers:
             if layer.name == name:
                 return layer
-    def forward(self, inputs):
-        input = copy(inputs)
+    def forward(self, inputs, debug=False, epsilon=None):
+        input = np.copy(inputs)
         for layer in self.layers:
-            output = layer.forward(input)
+            output = layer.forward(input, debug=debug, epsilon=epsilon)
             input = output
         return input
     def backward(self, X, y, output, step):
@@ -135,14 +151,16 @@ class NeuralNet():
             out = prev_delta
     def fit(self, X, y, epochs=10, step=0.05, shuffle=True):
         self.error = []
-        i = .1 * epochs
+        i = 0.005 * epochs
         for epoch in range(epochs):
             #print('X shape in fit',X.shape)W
             if shuffle:
                 np.random.shuffle(X)
             output = self.forward(X)
+            # output è l'uscita attivata del neurone di output layer ed è grande quanto le y reali e va bene
             #print('output neuron ou',np.sum(output))
             cost = self.cost.forward(output,y)
+            # cost è uno scalare e va bene
             # cost = mean_squared_error(y,output)
             self.error.append(cost)
             if epoch % i == 0:
@@ -192,40 +210,31 @@ class NeuralNet():
             theta.append(new_vector)
         return np.vstack(theta)
     def gradient_check(self, X, y, epsilon=1e-7):
-        parameters_theta = self.parameters_to_theta()
-        gradients_theta = self.gradients_to_theta()
+        theta = self.parameters_to_theta()
+        dtheta = self.gradients_to_theta() # 73x1 vettore riga di 73 gradienti (i pesi complessivi + i biases)
         # X 120x4
         # y 120x4
-        num_parameters = parameters_theta.shape[0]
+        num_parameters = theta.shape[0]
         J_plus = np.zeros((num_parameters, 1))
         J_minus = np.zeros((num_parameters, 1))
-        gradapprox = np.zeros((num_parameters, 1))
-        
-        theta_plus = np.copy(parameters_theta)
-        theta_plus += epsilon
-        J_plus = self.cost.forward(self.forward(X),y)
-
-        theta_minus = np.copy(parameters_theta)
-        theta_minus -= epsilon
-        J_minus = self.cost.forward(self.forward(X),y)
-
-        gradapprox = (J_plus - J_minus)/ (2 * epsilon)
-        
-        numerator = np.linalg.norm(gradients_theta - gradapprox)
-        denominator = np.linalg.norm(gradapprox) + np.linalg.norm(gradients_theta)
+        dtheta_approx = np.zeros((num_parameters, 1))
+        for i in range(num_parameters):
+            theta_plus = np.zeros((num_parameters,1))
+            theta_plus[i] = epsilon # vettore riga 73x1 con ognuno dei 73 valori aumentato di epsilon
+            # ora devo calcolare il costo con i parametri aumentati di un epsilon
+            J_plus[i] = self.cost.forward(self.forward(X, debug=True, epsilon=theta_plus),y)
+            # J_plus è il costo con in parametri aumentati di un epsilon
+            theta_minus = np.zeros((num_parameters,1))
+            theta_minus[i] = - epsilon
+            J_minus[i] = self.cost.forward(self.forward(X, debug=True, epsilon=theta_minus),y)
+            # J_minus è il costo con i parametri aumentati di un epsilon
+            # dtheta_approx deve essere un vettore colonna 73x1
+            dtheta_approx[i] = (J_plus[i] - J_minus[i])/ (2 * epsilon)
+            
+        numerator = np.linalg.norm(dtheta - dtheta_approx)
+        denominator = np.linalg.norm(dtheta_approx) + np.linalg.norm(dtheta)
         difference = numerator / denominator
         return difference
-    def gradient_check2(self, X, y, epsilon=1e-7):
-        
-        self.fit(X, y, epochs=1, step=0.001, shuffle=False)
-        theta = self.parameters_to_theta()
-        grad = self.gradients_to_theta()
-
-        J_plus = self.cost.forward(theta + epsilon)
-        J_minus = self.cost.forward(theta - epsilon)
-        gradapprox = (J_plus - J_minus) / (2 * epsilon)
-
-        print(grad - gradapprox)
 
 
 
@@ -241,8 +250,8 @@ model = NeuralNet()
 
 output_layer = Dense((5,3),name='output_layer',activation='sigmoid')
 
-model.add(Dense((4,5),name='input_layer',activation='identity'))
-model.add(Dense((5,5),name='hidden_layer',activation='identity'))
+model.add(Dense((4,5),name='input_layer',activation='relu'))
+model.add(Dense((5,5),name='hidden_layer',activation='relu'))
 model.add(output_layer)
 
 model.compile()
@@ -253,8 +262,9 @@ model.compile()
 # con eta = 0.1 la rete diverge (i pesi diventano troppo grandi) perchè quando scende nel gradiente lo fa con passi troppo lunghi
 
 # alleno la rete con pochi input giusto per calcolare la differenza di gradiente
-model.fit(X_train[0:10],y_train[0:10], epochs=10000, step=0.001)
-difference = model.gradient_check(X_train[0:10], y_train[0:10])
+
+model.fit(X_train,y_train, epochs=1, step=1e-4)
+difference = model.gradient_check(X_train, y_train)
 if difference <= 1e-7:
     print('backpropagation works')
 else:
