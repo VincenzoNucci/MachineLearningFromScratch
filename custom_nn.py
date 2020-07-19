@@ -46,6 +46,7 @@ class Neuron():
 class Dense(Layer):
     def __init__(self, input_shape, name=None, activation='relu'):
         self.name = name
+        self.is_output = False
         self.weights = np.random.uniform(low=0.01, high=0.10, size=input_shape) # vettore dei pesi di un singolo neurone
         self.biases = np.ones((1,input_shape[1])) # bias di ogni singolo neurone
         if activation == 'softmax':
@@ -59,6 +60,8 @@ class Dense(Layer):
         else: #activation == 'relu':
             self.activation = Activation_ReLU()
         self.cost = Cost_MSE()
+    def set_as_output(self, is_output=True):
+        self.is_output = is_output
     def forward(self, inputs, debug=False, epsilon=None):
         self.net_input = inputs
         if debug:
@@ -83,13 +86,13 @@ class Dense(Layer):
         self.activated_output = self.activation.forward(self.output)
         return self.activated_output
     def backward(self, X, y, output, step):
-        if self.name == 'output_layer':
+        if self.is_output:
             errore = self.cost.backward(output, y) #(a_k - y_hat_k) k - 120x3 oppure 120x3 - 120x3 [n_features x n_classlabels]
             #print('errore shape', errore.shape)
             #output_error = self.cost.backward(output, y)
             #print('derivata output shape', self.activation.backward(self.output).shape)
             #print('sigmoid prime',np.sum(self.activation.backward(self.output)))
-            delta_k = self.activation.backward(self.output) * errore # 120x3 o 120x3 = 120x3 dimensione uguale ai pesi del layer di output perchè 5 sono i neuroni di input del layer precedente e 3 sono i neuroni di output che sono le classlabels
+            delta_k = self.activation.backward(self.output)* errore # 120x3 o 120x3 = 120x3 dimensione uguale ai pesi del layer di output perchè 5 sono i neuroni di input del layer precedente e 3 sono i neuroni di output che sono le classlabels
             # delta_k quanto il neurone k si discosta dal valore reale
             #print('delta_k shape',delta_k.shape)
             # per calcolare il gradiente moltiplico l'output attivato del neurone precedente che sarebbe l'input del neurone attuale con il delta_k 5x3
@@ -118,9 +121,16 @@ class Dense(Layer):
             self.biases -= step * self.grad_b
             #print(np.sum(self.weights))
             return np.dot(delta_j, self.weights.T)
+    def compile(self, optimizer=None, loss='mse'):
+        if loss == 'categorical_crossentropy':
+            self.cost = Categorical_CrossEntropyLoss()
+        elif loss == 'binary_crossentropy':
+            self.cost = Binary_CrossEntropyLoss()
+        else:
+            self.cost = Cost_MSE()
     def summary(self):
         return '''{}
-        {}'''.format(self.name,self.weights)
+        {}'''.format(self.name, self.weights.shape)
     def get_parameters(self):
         return self.weights, self.biases
     def get_gradients(self):
@@ -149,25 +159,34 @@ class NeuralNet():
         for layer in self.layers[::-1]:
             prev_delta = layer.backward(X, y, out, step)
             out = prev_delta
-    def fit(self, X, y, epochs=10, step=0.05, shuffle=True):
+    def fit(self, X, y, batch_size=1, epochs=10, step=0.05, shuffle=True):
+        self.layers[-1].set_as_output()
         self.error = []
         i = 0.005 * epochs
         for epoch in range(epochs):
             #print('X shape in fit',X.shape)W
             if shuffle:
                 np.random.shuffle(X)
-            output = self.forward(X)
-            # output è l'uscita attivata del neurone di output layer ed è grande quanto le y reali e va bene
-            #print('output neuron ou',np.sum(output))
-            cost = self.cost.forward(output,y)
-            # cost è uno scalare e va bene
-            # cost = mean_squared_error(y,output)
-            self.error.append(cost)
+            batches = int(np.ceil(X.shape[0]/batch_size))
+            batches_error = []
+            for t in range(batches):
+                batch_X = X[t*batch_size:np.min([X.shape[0],(t+1)*batch_size]),:]
+                batch_y = y[t*batch_size:np.min([y.shape[0],(t+1)*batch_size]),:]
+                output = self.forward(batch_X)
+                #print('output shape', output.shape)
+                # output è l'uscita attivata del neurone di output layer ed è grande quanto le y reali e va bene
+                #print('output neuron ou',np.sum(output))
+                cost = self.cost.forward(output,batch_y)
+                # cost è uno scalare e va bene
+                # cost = mean_squared_error(y,output)
+                batches_error.append(cost)
+                
+                self.backward(batch_X, batch_y, output, step)
+            self.error.append(np.mean(batches_error))
             if epoch % i == 0:
-                print('epoch:', epoch, 'error:', cost)
-            self.backward(X, y, output, step)
-        #plt.plot(np.arange(epochs),self.error)
-        #plt.show()
+                    print('epoch:', epoch, 'error:', np.mean(self.error))
+        plt.plot(np.arange(epochs),self.error)
+        plt.show()
         return self
     def predict(self, X):
         return self.forward(X)
@@ -178,8 +197,15 @@ class NeuralNet():
         y_pred = self.predict(X)
         print(y_pred)
         print(confusion_matrix(y,y_pred))
-    def compile(self, cost='mse'):
-        self.cost = Cost_MSE()
+    def compile(self, loss='mse'):
+        if loss == 'categorical_crossentropy':
+            self.cost = Categorical_CrossEntropyLoss()
+        elif loss == 'binary_crossentropy':
+            self.cost = Binary_CrossEntropyLoss()
+        else:
+            self.cost = Cost_MSE()
+        for layer in self.layers:
+            layer.compile(loss=loss)
     def parameters_to_theta(self):
         keys = []
         count = 0
@@ -239,6 +265,10 @@ class NeuralNet():
 
 
 X, y = load_iris(return_X_y=True)
+
+X = (X - np.mean(X)) / np.std(X) # standardize the data to improve network convergence
+# now mean is close to zero
+# now std is close to 1 or 1.0
 y = y.reshape((-1,1)) # iris dataset has (150,3) output but we need (150,)
 encoder = OneHotEncoder(sparse=False)
 y = encoder.fit_transform(y)
@@ -248,14 +278,13 @@ X_train, X_test, y_train, y_test = train_test_split(X,y,train_size=0.8)
 print('training samples', X_train.shape)
 model = NeuralNet()
 
-output_layer = Dense((5,3),name='output_layer',activation='sigmoid')
+output_layer = Dense((10,3),name='output_layer',activation='sigmoid')
 
-model.add(Dense((4,5),name='input_layer',activation='relu'))
-model.add(Dense((5,5),name='hidden_layer',activation='relu'))
+model.add(Dense((4,10),name='input_layer',activation='relu'))
+model.add(Dense((10,10),name='hidden_layer',activation='relu'))
 model.add(output_layer)
 
-model.compile()
-
+model.compile(loss='categorical_crossentropy')
 #X_train = np.random.randn(1,120).T
 #y_train = np.greater_equal(X_train,0.5).astype(int).T
 #model.forward(X_train)
@@ -263,17 +292,15 @@ model.compile()
 
 # alleno la rete con pochi input giusto per calcolare la differenza di gradiente
 
-model.fit(X_train,y_train, epochs=1, step=1e-4)
+model.fit(X_train,y_train, batch_size=5, epochs=1000, step=1e-4)
 difference = model.gradient_check(X_train, y_train)
 if difference <= 1e-7:
     print('backpropagation works')
 else:
     print(difference, 'not gud')
 
+print(model.predict(X_test[0]))
 #print(theta)
-
-#model.fit(X_train,y_train,epochs=10000,step=0.0001)
-
 
 #print(model.summary())
 #first_pass_out = model.forward(X_train)
