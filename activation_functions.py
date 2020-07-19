@@ -21,7 +21,18 @@ class Activation_Step:
 
 class Activation_Softmax:
     def forward(self, inputs):
-        return np.exp(inputs) / np.sum(np.exp(inputs),axis=0) # sum along the length aka shape[0]
+        return np.exp(inputs) / np.sum(np.exp(inputs),axis=0)
+    def backward(self, inputs):
+        #Sz = np.reshape(inputs, (-1,1))
+        Sz = inputs
+        D = -np.outer(Sz, Sz) + np.diagflat(Sz)
+        return D
+
+class Activation_StableSoftmax:
+    # used to avoid NaNs
+    def forward(self, inputs):
+        shift = inputs - np.max(inputs)
+        return np.exp(shift) / np.sum(np.exp(shift))
     def backward(self, inputs):
         raise NotImplementedError
 
