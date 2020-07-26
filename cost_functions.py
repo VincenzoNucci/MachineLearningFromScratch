@@ -9,7 +9,7 @@ class MeanSquaredErrorLoss():
         # uso axis=0 nel caso di categorical loss
     def backward(self, y_pred, y_real):
         m = y_real.shape[0]
-        return (2/m) * np.sum(y_pred - y_real, axis=0)
+        return (2/m) * - np.sum((y_pred - y_real), axis=0)
 
 # categorical cross entropy is when cross entropy is used together with softmax
 # binary cross entropy is when cross entropy is used together with sigmoid
