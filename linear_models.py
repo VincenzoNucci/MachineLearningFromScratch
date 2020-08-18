@@ -9,9 +9,6 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-import eli5
-from IPython.display import display
-from preprocessing_functions import StandardScaler as scaler
 
 class LinearModel(object):
     def __init__(self):
@@ -26,7 +23,7 @@ class LinearModel(object):
         self.sse = None
         self.sst = None
 
-    def sees(self): # standard error of the coefficents
+    def standard_error(self): # standard error of the coefficents
         n = self.n_samples
         s = np.sqrt(np.std(self.error) * (1/(n - 2)))
         # se of the bias and coefficients
@@ -130,13 +127,20 @@ class LinearRegressor(LinearModel):
         # compute error with mse
         self.error = (1/self.n_samples) * np.sum((y_pred - y)**2)
         self.sse = np.sum((y - y_pred)**2)
+        k = self.n_features-1
+        self.residual_standard_error = np.sqrt(self.sse/self.n_samples - (1 + k))
+        self.standard_error = self.residual_standard_error / np.sqrt(self.theta)
+        print(self.standard_error)
         #self.sst = np.sum((y - np.mean(y))**2)
         s = np.sqrt(self.sse/(self.n_samples - 2))
         #self.se_est = np.sqrt(s) / np.sqrt(np.diag(np.linalg.inv(np.dot(self.weights.T,self.weights))))
         
         #self.se_est = np.reshape(self.se_est, (-1, 1))
-        
+        t_value_abs = []
+        for i,weight in enumerate(self.theta):
+            t_value_abs.append(np.abs(weight/self.standard_error))
         #self.t_value = np.abs(np.divide(self.theta, self.se_est))
+        self.t_value = np.array(t_value_abs)
         
 
         
@@ -157,9 +161,10 @@ class LinearRegressor(LinearModel):
         # adjusted r squared
         #return 1 - (1 - r2_biased) * ((X.shape[0] - 1)/(X.shape[0] - X.shape[1] - 1))
 
-    def summary(self, feature_names):
-        print(np.hstack((self.theta, self.se_est, self.t_value)))
-        
+    def summary(self):
+        data = np.hstack((self.theta, self.standard_error, self.t_value))
+        df = pd.DataFrame(data, columns=['weight','SE','|t|'])
+        print(df)
 
 
 
@@ -254,11 +259,12 @@ if __name__ == "__main__":
     
     X_train, X_test, y_train, y_test = train_test_split(X,y,train_size=0.8, random_state=0)
 
-    myModel = LinearRegressor().fit(X_train, y_train, epochs=1)
-    display(eli5.show_weights(myModel))
     model = LinearRegression().fit(X_train,y_train)
-    # print(model.score(X_test, y_test))
-    print(myModel.score(X_test, y_test))
+    print(model.score(X_test, y_test))
+
+    myModel = LinearRegressor().fit(X_train,y_train)
+    print(myModel.score(X_test,y_test))
+    myModel.summary()
     # print(model.coef_.T - myModel.coef_)
     # print(myModel.coef_)
     #model.fit(X_train, y_train, epochs=10, step=0.02)
@@ -267,17 +273,7 @@ if __name__ == "__main__":
 
     #y_pred = model.predict(X_test)
     
-    myModel.weight_plot(labels)
-    myModel.effect_plot(labels)
 
     # Logistic Regression test
 
-    dataset = load_iris()
-    X = dataset.data
-    X = StandardScaler().fit_transform(X)
-    y = np.reshape(dataset.target,(-1,1))
-    y = OneHotEncoder(sparse=False).fit_transform(y)
-    labels = dataset.feature_names
-
-    myLogRegressor = LogisticRegressor()
-    myLogRegressor.fit(X, y, epochs=1000, step=1e-3)
+    
