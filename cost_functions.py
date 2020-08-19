@@ -3,13 +3,21 @@ import numpy as np
 # la funzione costo nel forward mi deve restituire un numero
 # nel backward mi deve restituire un vettore
 class MeanSquaredErrorLoss():
-    def forward(self, y_pred, y_real):
+    def forward(self, y_real, y_pred):
         n = y_real.shape[0]
-        return (1/n) * np.sum((y_pred - y_real)**2,axis=0)  # la somma dell'errore di tutti i neuroni k di output
+        return (1/n) * np.sum((y_pred - y_real)**2)  # la somma dell'errore di tutti i neuroni k di output
         # uso axis=0 nel caso di categorical loss
-    def backward(self, y_pred, y_real):
+    def backward(self, y_real, y_pred):
         m = y_real.shape[0]
-        return (2/m) * - np.sum((y_pred - y_real), axis=0)
+        return -1 * (2/m) * np.sum((y_pred - y_real))
+
+class RootMeanSquaredErrorLoss():
+    def forward(self, y_real, y_pred):
+        n = y_real.shape[0]
+        return np.sqrt((1/n) * np.sum((y_pred - y_real)**2))
+    def backward(self, y_real, y_pred):
+        pass
+        #TODO
 
 # categorical cross entropy is when cross entropy is used together with softmax
 # binary cross entropy is when cross entropy is used together with sigmoid
