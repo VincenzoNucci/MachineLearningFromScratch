@@ -9,7 +9,7 @@ class MeanSquaredErrorLoss():
         # uso axis=0 nel caso di categorical loss
     def backward(self, y_real, y_pred):
         m = y_real.shape[0]
-        return -1 * (2/m) * np.sum((y_pred - y_real))
+        return (-2/m) * np.sum((y_pred - y_real))
 
 class RootMeanSquaredErrorLoss():
     def forward(self, y_real, y_pred):
