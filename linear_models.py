@@ -1,14 +1,33 @@
 import numpy as np
 from datetime import datetime
+import scipy
 from scipy import stats
 from scipy.special import expit # stable logistic function
 import pandas as pd
 from sklearn.datasets import load_boston, load_iris
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.decomposition import PCA
+from cost_functions import MeanSquaredErrorLoss
+import statistics
+import model_interpretable_methods
 import matplotlib.pyplot as plt
+
+def back_solver(A,b):
+    n = A.shape[1]
+    xcomp = np.zeros(n)
+
+    x_n = b[-1] / A[-1,-1]
+
+    for i in range(n-1, -1, -1):
+        tmp = b[i]
+        for j in range(n-1, i, -1):
+            tmp -= xcomp[j]*A[i,j]
+            
+        xcomp[i] = tmp/A[i,i]
+    return xcomp
 
 class LinearModel(object):
     def __init__(self):
@@ -37,59 +56,17 @@ class LinearModel(object):
         return [np.abs(self.theta[i] / self.se()[i]) for i in range(self.n_features)]
         # return np.abs(self.theta / self.se())
 
-        # Intepretation Methods
-
-    def weight_plot(self, feature_names):
-        ci = np.zeros((2,self.n_features))
-        #plt.scatter(self.coef_, np.arange(0,self.n_features), c='k', s=20)
-        plt.title('Weight plot')
-        plt.xlabel('Weight estimate')
-        plt.yticks(ticks=np.arange(0,self.n_features),labels=feature_names)
-        
-        # Compute CI
-        alpha = 0.05
-        df = self.n_features
-        t = stats.t.ppf(1 - alpha/2, df)
-        s = np.std(self.coef_, ddof=1)
-        n = self.coef_.shape[0]
-        #ci[0,:] = self.coef_.flatten() - (t * s / np.sqrt(n))
-        #ci[1,:] = self.coef_.flatten() + (t * s / np.sqrt(n))
-        lower, upper = stats.norm.interval(alpha,loc=self.coef_, scale=s/np.sqrt(n))
-        ci[0,:] = lower.flatten()
-        ci[1,:] = upper.flatten()
-        # ms = marker size, quando è grande il pallino
-        # ecolor = il colore della barra del conf int
-        # elinewidth = quanto è thicc la barra del conf int
-        # capsize = quanto grandi le barre laterali che chiudono il conf int
-        # fmt = 'o' significa disegna solo la pallina
-        # xerr = tupla con il lower e upper, specificando solo xerr, il conf int viene orizzontale
-        plt.errorbar(self.coef_, np.arange(self.n_features), xerr=ci, fmt='o', ms=5, c='k', ecolor='k', elinewidth=1.5, capsize=2.5)
-        plt.axvline(0, linestyle=':', c='k')
-        plt.show()
-
-    def effect_plot(self, feature_names):
-        # calculate the effect for the data
-        # self.effects = np.zeros_like(self.inputs)
-        self.effects = np.multiply(self.inputs, self.coef_.T)
-        #for i,input in enumerate(self.inputs):
-        #    self.effects[i,:] = np.multiply(input, self.coef_.T)
-        plt.title('Effect plot')
-        plt.xlabel('Feature effect')
-        plt.yticks(ticks=np.arange(0,self.n_features),labels=feature_names)
-        plt.axvline(0, linestyle=':', c='k')
-        plt.boxplot(self.effects, vert=False, labels=feature_names)
-        plt.show()
 
 class LinearRegressor(LinearModel):
-    def __init__(self):
+    def __init__(self,labels):
         super().__init__()
         # self.weights è matrice Nxd+1 (compreso il bias)
+        self.labels = labels
 
     def fit(self, X, y, epochs=200, step=0.01):
         self.n_samples = X.shape[0]
         self.n_features = X.shape[1]
         # _X = np.hstack((np.ones((X.shape[0], 1)), X))
-        self.inputs = X
 
         # gradient descent approach
         # self.theta = np.random.normal(size=(self.n_features + 1, 1))
@@ -106,64 +83,62 @@ class LinearRegressor(LinearModel):
         #    print('epoch: {}, error: {}'.format(epoch+1, self.error))
 
         # Moore-Penrose pseudo-inverse approach
-        self.weights = np.hstack((np.ones((X.shape[0], 1)),X))
+        self.inputs = np.hstack((np.ones((X.shape[0], 1)),X))
         # compute in a single step, the best parameters that fit the data
-        self.theta = np.linalg.inv(np.dot(self.weights.T,self.weights)).dot(self.weights.T).dot(y)
-        self.theta = np.reshape(self.theta, (-1,1)) # reshape into a 2d vector
+        #theta = np.linalg.inv(np.dot(self.inputs.T,self.inputs)).dot(self.inputs.T).dot(y)
+        #theta = np.reshape(theta, (-1,1)) # reshape into a 2d vector
 
         # QR decomposition approach
-        # _X = np.hstack((np.ones((X.shape[0], 1)), X))
-        # Q, R = np.linalg.qr(_X)
-        # self.theta = np.linalg.inv(R).dot(Q.T).dot(y)
-
+        #_X = np.hstack((np.ones((X.shape[0], 1)), X))
+        # il qr di scipy non ritorna una matrice R quadrata
+        Q, R = np.linalg.qr(self.inputs)
+        # theta = scipy.linalg.solve(R,np.dot(Q.T,y))
+        theta = np.dot(np.linalg.inv(R),np.dot(Q.T,y))
+        # theta = scipy.linalg.solve_triangular(R,np.dot(Q.T,y))
+        print('qr theta',theta)
+        
         # SVD approach
         # TODO
 
-        self.intercept_ = self.theta[0]
-        self.coef_ = self.theta[1:]
+        # numpy approach
+        #self.coef_,residues,_,_ = scipy.linalg.lstsq(X,y)
+        #print('lstsq theta',self.coef_)
+        
+        self.coef_ = theta
+        self.intercept_ = self.coef_[0]
         # print('theta best', self.theta.shape) (14,1)
         _X = np.hstack((np.ones((X.shape[0], 1)), X))
-        y_pred = _X @ self.theta
+        y_pred = _X @ self.coef_
         # compute error with mse
-        self.error = (1/self.n_samples) * np.sum((y_pred - y)**2)
-        self.sse = np.sum((y - y_pred)**2)
+        self.error = MeanSquaredErrorLoss().forward(y,y_pred)
+        print('error of np theta',self.error)
+        self.sse = statistics.residual_sum_squares(y,y_pred)
+        # residual standard error
         k = self.n_features-1
-        self.residual_standard_error = np.sqrt(self.sse/self.n_samples - (1 + k))
-        self.standard_error = self.residual_standard_error / np.sqrt(self.theta)
-        print(self.standard_error)
-        #self.sst = np.sum((y - np.mean(y))**2)
-        s = np.sqrt(self.sse/(self.n_samples - 2))
-        #self.se_est = np.sqrt(s) / np.sqrt(np.diag(np.linalg.inv(np.dot(self.weights.T,self.weights))))
+        self.residual_standard_error = statistics.residual_standard_error(y,y_pred,k)
+        self.standard_error = statistics.standard_error(y,y_pred,k,self.coef_)
         
-        #self.se_est = np.reshape(self.se_est, (-1, 1))
-        t_value_abs = []
-        for i,weight in enumerate(self.theta):
-            t_value_abs.append(np.abs(weight/self.standard_error))
-        #self.t_value = np.abs(np.divide(self.theta, self.se_est))
-        self.t_value = np.array(t_value_abs)
-        
-
-        
+        t_value_abs = np.abs(statistics.t_value(y,y_pred,k,self.coef_))
+        self.t_value = t_value_abs
 
         return self
 
     def predict(self, X):
         # if passed only a sample instead of test matrix
         _X = np.hstack((np.ones((X.shape[0], 1)), X))
-        return _X @ self.theta
+        return _X @ self.coef_
 
     def score(self, X, y):
         y_pred = self.predict(X)
-        sse = np.sum((y - y_pred)**2)
-        sst = np.sum((y - np.mean(y))**2)
-        r2_biased = 1 - sse / sst
-        return r2_biased
+        return statistics.multiple_r_squared(y,y_pred)
         # adjusted r squared
         #return 1 - (1 - r2_biased) * ((X.shape[0] - 1)/(X.shape[0] - X.shape[1] - 1))
 
     def summary(self):
-        data = np.hstack((self.theta, self.standard_error, self.t_value))
-        df = pd.DataFrame(data, columns=['weight','SE','|t|'])
+        l = np.reshape(np.array(['(Intercept)']+self.labels),(-1,1))
+        print(stats.t.ppf(self.t_value,self.n_features-1))
+        data = np.hstack((l,self.coef_, self.standard_error, self.t_value))
+        df = pd.DataFrame(data, columns=['feature','weight','SE','|t|'])
         print(df)
 
 
@@ -196,6 +171,9 @@ class LogisticRegressor(LinearModel):
         self.intercept_ = self.theta[0]
         self.coef_ = self.theta[1:]
         return self
+    
+class LassoRegressor(LinearModel):
+    pass
 
 if __name__ == "__main__":
     np.random.seed(1)
@@ -260,11 +238,12 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X,y,train_size=0.8, random_state=0)
 
     model = LinearRegression().fit(X_train,y_train)
-    print(model.score(X_test, y_test))
+    print('model score',model.score(X_test, y_test))
 
-    myModel = LinearRegressor().fit(X_train,y_train)
-    print(myModel.score(X_test,y_test))
+    myModel = LinearRegressor(labels=labels).fit(X_train,y_train)
+    print('mymodel score',myModel.score(X_test,y_test))
     myModel.summary()
+    model_interpretable_methods.weight_plot(myModel.coef_,y,myModel.y_pred,myModel.n_features,labels)
     # print(model.coef_.T - myModel.coef_)
     # print(myModel.coef_)
     #model.fit(X_train, y_train, epochs=10, step=0.02)
