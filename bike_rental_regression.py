@@ -5,11 +5,14 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
+import model_interpretable_methods
+import pyreadr
 
 if __name__ == "__main__":
     np.random.seed(1)
     # dataset = np.genfromtxt('./Bike-Sharing-Dataset/day.csv',delimiter=',',dtype=None, encoding=None, names=True)
     df = pd.read_csv('./Bike-Sharing-Dataset/day.csv', header=0, parse_dates=True)
+    #result = pyreadr.read_r('./Bike-Sharing-Dataset/bike.RData')
     
     # qui fare preprocessing come su github
     df['season'] = df['season'].map({2:'seasonSUMMER', 3:'seasonFALL',4:'seasonWINTER'})
@@ -51,6 +54,8 @@ if __name__ == "__main__":
     df['windspeed'] = 67 * df['windspeed']
     df['hum'] = 100 * df['hum']
     
+    print(df)
+
     X = df.drop(labels=['instant','dteday','registered','casual','atemp' ,'mnth','yr','weekday'],axis=1)
     X = X.drop(labels=['cnt'],axis=1)
     
@@ -68,13 +73,15 @@ if __name__ == "__main__":
     
     X_train, X_test, y_train, y_test = train_test_split(X,y,train_size=0.8, random_state=0)
 
-    model = LinearRegression().fit(X_train,y_train)
-    print('model score',model.score(X_test, y_test))
+    model = LinearRegression(normalize=False).fit(X_train,y_train)
 
-    #myModel = LinearRegressor(labels=labels).fit(X_train,y_train)
-    #print('mymodel score',myModel.score(X_test,y_test))
-    #myModel.summary()
-    #model_interpretable_methods.weight_plot(myModel.coef_,y,myModel.y_pred,myModel.n_features,labels)
+    myModel = LinearRegressor(labels=labels).fit(X_train,y_train, epochs=550)
+    print('model score',model.score(X_test, y_test))
+    print('mymodel score',myModel.score(X_test,y_test))
+    print(np.append(model.intercept_,model.coef_) - myModel.coef_)
+    myModel.summary()
+    y_pred = myModel.predict(X_train)
+    model_interpretable_methods.weight_plot(myModel.coef_,y_train,y_pred,myModel.n_features,labels)
     # print(model.coef_.T - myModel.coef_)
     # print(myModel.coef_)
     #model.fit(X_train, y_train, epochs=10, step=0.02)
