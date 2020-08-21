@@ -1,4 +1,4 @@
-from linear_models import LogisticRegressor
+from linear_models import LogisticBinaryClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from datetime import datetime
 
 if __name__ == "__main__":
-    np.random.seed(1)
+    np.random.seed(0)
     # dataset = np.genfromtxt('./Bike-Sharing-Dataset/day.csv',delimiter=',',dtype=None, encoding=None, names=True)
     df = pd.read_csv('./Cervical-Cancer-Dataset/risk_factors_cervical_cancer.csv', header=0, parse_dates=True)
     df = df.replace(to_replace='?',value=df.mode(axis=1).iloc[0])
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     df = df.drop(columns=['Hinselmann','Schiller','Citology'],axis=1)
     # df['Biopsy'] = df['Biopsy'].map({0:'Healty',1:'Cancer'})
     
-    X = df.drop(labels=['Biopsy'],axis=1)
+    X = df[['Hormonal Contraceptives', 'Smokes','Num of pregnancies','STDs (number)','IUD']]
     labels = list(X.columns)
     X = X.to_numpy()
     print(np.where(X == '?'))
@@ -34,12 +34,12 @@ if __name__ == "__main__":
     
     X_train, X_test, y_train, y_test = train_test_split(X,y,train_size=0.8, random_state=0)
 
-    model = LogisticRegression().fit(X_train,y_train)
+    model = LogisticRegression(penalty='none').fit(X_train,y_train)
     print('model score',model.score(X_test, y_test))
 
-    myModel = LogisticRegressor().fit(X_train,y_train)
-    print('mymodel score',myModel.score(X_test,y_test))
-    #myModel.summary()
+    myModel = LogisticBinaryClassifier(labels=labels).fit(X_train,y_train)
+    #print('mymodel score',myModel.score(X_test,y_test))
+    myModel.summary()
     #model_interpretable_methods.weight_plot(myModel.coef_,y,myModel.y_pred,myModel.n_features,labels)
     
     # print(model.coef_.T - myModel.coef_)
