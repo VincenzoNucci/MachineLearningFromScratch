@@ -131,3 +131,4 @@ dmypy.json
 .vscode/*
 /hearthstone/*
 /datasets/slay_the_spire/*
+/sts_runs/*
