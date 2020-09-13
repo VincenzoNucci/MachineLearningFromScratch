@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 .vscode/*
-/Bike-Sharing-Dataset/*
-/Cervical-Cancer-Dataset/*
+/hearthstone/*
+/datasets/slay_the_spire/*
